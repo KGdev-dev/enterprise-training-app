@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
+from src.bugzot import BugzotMonitor
 from src.models import Course, Learner, Registration, RegistrationStatus
 
 
@@ -29,14 +30,26 @@ class ProcessingReason:
 class RegistrationEngine:
     """Processes learner course registration requests with integrity guarantees."""
 
-    def __init__(self, courses: list[Course], learners: list[Learner]) -> None:
-        self._courses: dict[str, Course] = {course.course_id: course for course in courses}
-        self._learners: dict[str, Learner] = {
-            learner.learner_id: learner for learner in learners
-        }
+    def __init__(
+        self,
+        courses: list[Course] | dict[str, Course],
+        learners: list[Learner] | dict[str, Learner],
+        monitor: BugzotMonitor | None = None,
+    ) -> None:
+        self._courses: dict[str, Course]
+        self._learners: dict[str, Learner]
+        if isinstance(courses, dict):
+            self._courses = dict(courses)
+        else:
+            self._courses = {course.course_id: course for course in courses}
+        if isinstance(learners, dict):
+            self._learners = dict(learners)
+        else:
+            self._learners = {learner.learner_id: learner for learner in learners}
         self._registration_pairs: set[tuple[str, str]] = set()
         self._registrations: list[Registration] = []
         self._processing_summaries: list[dict[str, Any]] = []
+        self._monitor = monitor
 
         self._pair_lock = Lock()
         self._summary_lock = Lock()
@@ -138,6 +151,12 @@ class RegistrationEngine:
 
                 if not course.has_available_slot():
                     registration.status = RegistrationStatus.REJECTED
+                    if self._monitor is not None:
+                        self._monitor.log_event(
+                            category="registration",
+                            message=f"Capacity exceeded for course {course_id}",
+                            severity="WARNING",
+                        )
                     result = {
                         "thread_id": thread_id,
                         "registration": registration,
@@ -167,6 +186,12 @@ class RegistrationEngine:
             registration = result.get("registration")
             if registration is not None:
                 self._registrations.append(registration)
+            if self._monitor is not None:
+                self._monitor.metrics["total_processed"] += 1
+                if result.get("status") is RegistrationStatus.CONFIRMED:
+                    self._monitor.metrics["success"] += 1
+                else:
+                    self._monitor.metrics["rejected"] += 1
 
     def _build_summary(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         success_count = sum(
