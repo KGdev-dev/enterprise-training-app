@@ -19,6 +19,8 @@ class RegistrationStatus(str, Enum):
 
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
     CANCELLED = "CANCELLED"
 
 
