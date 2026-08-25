@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from src.engine import RegistrationEngine
+from src.bugzot import BugzotMonitor
+from src.engine import RegistrationEngine, compare_optimization_benchmark
 from src.models import Assessment, Course, Learner, Registration
 from src.patterns import (
     AppConfig,
@@ -132,6 +133,55 @@ def run_phase2_demo() -> None:
     print(f"Execution Time: {summary['execution_time_seconds']:.6f} seconds")
 
 
+def run_phase3_demo() -> None:
+    print("\n" + "=" * 72)
+    print("Enterprise Training App - Phase 3 Bugzot Monitoring")
+    print("=" * 72)
+
+    BugzotMonitor.reset_instance()
+    monitor = BugzotMonitor.get_instance()
+    courses = [Course("C-501", "Bugzot Performance Engineering", 2)]
+    learners = [
+        Learner("L-2001", "Nina Tran", "nina.tran@example.com"),
+        Learner("L-2002", "Omar Lee", "omar.lee@example.com"),
+        Learner("L-2003", "Pia Gomez", "pia.gomez@example.com"),
+    ]
+    engine = RegistrationEngine(courses=courses, learners=learners, monitor=monitor)
+
+    requests = [
+        {"registration_id": "R-9001", "learner_id": "L-2001", "course_id": "C-501"},
+        {"registration_id": "R-9002", "learner_id": "L-2001", "course_id": "C-501"},
+        {"registration_id": "R-9003", "learner_id": "L-2002", "course_id": "C-501"},
+        {"registration_id": "R-9004", "learner_id": "L-2003", "course_id": "C-501"},
+        {"registration_id": "R-9005", "learner_id": "", "course_id": "C-501"},
+    ]
+    summary = engine.process_concurrently(requests, max_workers=5)
+
+    print("\n[Bugzot-Monitored Concurrent Results]")
+    print(
+        f"Total={summary['total_processed']} | "
+        f"Success={summary['successful_count']} | Rejected={summary['rejected_count']}"
+    )
+    print(f"Rejection Breakdown: {summary['rejection_reasons']}")
+
+    print("\n[Bugzot Diagnostic Event Logs]")
+    for event in monitor.get_events():
+        print(
+            f"{event['timestamp']} | {event['level']} | {event['category']} | "
+            f"{event['message']} | payload={event['payload']}"
+        )
+
+    monitor.print_formatted_report()
+
+    benchmark = compare_optimization_benchmark(1000)
+    print("\n[Optimization Benchmark]")
+    print(f"Requests: {int(benchmark['total_requests'])}")
+    print(f"Unoptimized: {benchmark['unoptimized_seconds']:.6f}s")
+    print(f"Optimized:   {benchmark['optimized_seconds']:.6f}s")
+    print(f"Speedup:     {benchmark['speedup_factor']:.2f}x")
+
+
 if __name__ == "__main__":
     run_demo()
     run_phase2_demo()
+    run_phase3_demo()
