@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
+from src.bugzot import BugzotMonitor
 from src.models import Course, Learner, Registration, RegistrationStatus
 
 
@@ -167,6 +168,30 @@ class RegistrationEngine:
             registration = result.get("registration")
             if registration is not None:
                 self._registrations.append(registration)
+
+            monitor = BugzotMonitor.get_instance()
+            monitor.metrics["total_processed"] += 1
+            if result["status"] is RegistrationStatus.CONFIRMED:
+                monitor.metrics["success"] += 1
+                monitor.log_event(
+                    "registration",
+                    "Registration succeeded",
+                    severity="INFO",
+                )
+            else:
+                monitor.metrics["rejected"] += 1
+                if result["reason"] == ProcessingReason.DUPLICATE:
+                    monitor.log_event(
+                        "duplicate",
+                        "Duplicate registration rejected",
+                        severity="WARNING",
+                    )
+                elif result["reason"] == ProcessingReason.CAPACITY_EXCEEDED:
+                    monitor.log_event(
+                        "capacity",
+                        "Registration rejected because capacity was reached",
+                        severity="WARNING",
+                    )
 
     def _build_summary(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         success_count = sum(
